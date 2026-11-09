@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0ea5e9" />
+<title>Görme Keskinliği Testi</title>
+<link rel="manifest" href="manifest.json" />
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --accent: #0ea5e9; --accent2: #22c55e;
+    --danger: #ef4444; --text: #e2e8f0; --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); -webkit-user-select: none; user-select: none;
+  }
+  .screen {
+    display: none; flex-direction: column; min-height: 100vh;
+    padding: 20px; max-width: 900px; margin: 0 auto;
+  }
+  .screen.active { display: flex; }
+  h1 { font-size: 1.6rem; margin-bottom: 8px; }
+  h2 { font-size: 1.2rem; margin-bottom: 12px; color: var(--accent); }
+  p { line-height: 1.5; margin-bottom: 10px; color: var(--text); }
+  .muted { color: var(--muted); font-size: .9rem; }
+  button {
+    background: var(--accent); color: white; border: none; padding: 14px 20px;
+    border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer;
+    transition: filter .15s; margin: 6px 0;
+  }
+  button:active { filter: brightness(.85); }
+  button.secondary { background: var(--card); border: 1px solid var(--accent); }
+  button.danger { background: var(--danger); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .card {
+    background: var(--card); border-radius: 16px; padding: 20px;
+    margin-bottom: 16px; box-shadow: 0 4px 20px rgba(0,0,0,.3);
+  }
+  .flex-center { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; }
+  .grow { flex: 1; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > button { flex: 1; min-width: 140px; }
+  /* QR */
+  #qrContainer { background: white; padding: 12px; border-radius: 12px; display: inline-block; }
+  #qrContainer img, #qrContainer canvas { display: block; }
+  #peerIdBox {
+    font-family: monospace; background: #0b1220; padding: 8px 12px;
+    border-radius: 8px; margin-top: 8px; word-break: break-all; font-size: .85rem;
+  }
+  /* Countdown */
+  .countdown {
+    font-size: 5rem; font-weight: 800; color: var(--accent); text-align: center;
+    font-variant-numeric: tabular-nums; text-shadow: 0 0 30px rgba(14,165,233,.5);
+  }
+  .countdown.small { font-size: 2.5rem; }
+  /* Harf gösterimi */
+  .letter-display {
+    display: flex; align-items: center; justify-content: center;
+    flex: 1; font-weight: 900; font-family: "Courier New", monospace;
+    letter-spacing: 8px; text-align: center; user-select: none;
+  }
+  /* Hasta giriş */
+  #answerInput {
+    width: 100%; max-width: 320px; padding: 16px; font-size: 2rem; text-align: center;
+    border-radius: 12px; border: 2px solid var(--accent); background: #0b1220;
+    color: var(--text); text-transform: uppercase; font-weight: 800;
+    letter-spacing: 4px;
+  }
+  #answerInput:focus { outline: none; border-color: var(--accent2); }
+  /* Progress dots */
+  .progress { display: flex; gap: 6px; margin: 12px 0; flex-wrap: wrap; justify-content: center; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; background: #334155; transition: background .2s; }
+  .dot.correct { background: var(--accent2); }
+  .dot.wrong { background: var(--danger); }
+  .dot.current { box-shadow: 0 0 0 3px var(--accent); }
+  /* Kamera */
+  #reader { width: 100%; max-width: 400px; margin: 0 auto; border-radius: 12px; overflow: hidden; }
+  .hidden { display: none !important; }
+  /* Sonuç */
+  .result-big { font-size: 3rem; font-weight: 900; color: var(--accent2); text-align: center; }
+  .result-label { text-align: center; color: var(--muted); margin-bottom: 16px; }
+  .diagnosis { font-size: 1.5rem; font-weight: 700; text-align: center; color: var(--accent); }
+  .recap { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+  .recap div { background: #0b1220; padding: 10px; border-radius: 8px; font-size: .9rem; }
+  label.checkbox { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; padding: 12px; background: #0b1220; border-radius: 10px; }
+  label.checkbox input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--accent2); }
+  .warning { color: #fbbf24; font-weight: 600; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--card); padding: 12px 20px; border-radius: 10px;
+    border: 1px solid var(--accent); font-size: .9rem; z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5); max-width: 90%; text-align: center;
+  }
+  .toast.error { border-color: var(--danger); color: #fca5a5; }
+  .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); margin-right: 6px; }
+  .status-dot.online { background: var(--accent2); }
+</style>
+</head>
+<body>
+
+<!-- ============ ROL SEÇİMİ ============ -->
+<section id="screen-role" class="screen active">
+  <div class="flex-center">
+    <h1 style="text-align:center;margin-bottom:4px;">👁️ Görme Keskinliği Testi</h1>
+    <p class="muted" style="text-align:center;margin-bottom:32px;">P2P • Uçtan uca şifreli • Sunucusuz</p>
+    <div class="row" style="width:100%;max-width:400px;flex-direction:column;">
+      <button id="btnDoctor" style="padding:20px;font-size:1.2rem;">👨‍⚕️ Doktor</button>
+      <button id="btnPatient" class="secondary" style="padding:20px;font-size:1.2rem;">🧑 Hasta</button>
+    </div>
+    <p class="muted" style="margin-top:32px;text-align:center;font-size:.8rem;">
+      Kamera erişimi ve WebRTC için HTTPS gereklidir.
+    </p>
+  </div>
+</section>
+
+<!-- ============ DOKTOR: LOBİ ============ -->
+<section id="screen-doctor-lobby" class="screen">
+  <h2>👨‍⚕️ Doktor Paneli</h2>
+  <div class="card">
+    <p><span class="status-dot" id="docStatusDot"></span><span id="docStatusText">Hazırlanıyor...</span></p>
+    <div class="flex-center" style="margin:16px 0;">
+      <div id="qrContainer"></div>
+      <div id="peerIdBox">—</div>
+      <p class="muted" style="margin-top:8px;text-align:center;">Hastanız bu QR'ı okutacak</p>
+    </div>
+    <button id="btnStartTest" style="width:100%;" disabled>▶️ Testi Başlat (Hasta Bağlandı)</button>
+  </div>
+  <button id="btnDoctorBack" class="secondary">← Geri</button>
+</section>
+
+<!-- ============ DOKTOR: TEST EKRANI ============ -->
+<section id="screen-doctor-test" class="screen">
+  <div class="row" style="justify-content:space-between;align-items:center;">
+    <h2 id="docTestHeader">Sol Göz Testi</h2>
+    <span class="muted" id="docPhaseInfo"></span>
+  </div>
+  <div class="progress" id="docProgress"></div>
+
+  <!-- Faz: geri sayım -->
+  <div id="docCountdownPhase" class="flex-center">
+    <p class="muted" id="docCountdownLabel">Hastanın hazırlanması için:</p>
+    <div class="countdown" id="docCountdown">60</div>
+    <p class="muted" style="text-align:center;" id="docCountdownHint">Telefonunuzu sabitleyin, hastanız otursun.</p>
+  </div>
+
+  <!-- Faz: harf gösterimi -->
+  <div id="docLetterPhase" class="letter-display hidden">
+    <span id="docLetter">A</span>
+  </div>
+
+  <!-- Faz: hasta cevap bekleniyor -->
+  <div id="docWaitingPhase" class="flex-center hidden">
+    <p class="muted">Hastanın cevabı bekleniyor...</p>
+    <div class="countdown small" id="docAnswerTimer">5</div>
+  </div>
+</section>
+
+<!-- ============ HASTA: ONAY ============ -->
+<section id="screen-patient-consent" class="screen">
+  <h2>🧑 Hasta Bilgilendirme</h2>
+  <div class="card">
+    <p class="warning">⚠️ Lütfen dikkatlice okuyun:</p>
+    <ul style="margin:12px 0 12px 20px;line-height:1.8;">
+      <li>Her harf için <strong>5 saniyeniz</strong> vardır.</li>
+      <li>Sadece <strong>BÜYÜK HARFLER</strong> kullanılmıştır.</li>
+      <li><strong>O / 0</strong> ve <strong>I / 1</strong> karışıklığına dikkat edin. (Sadece harf girin: O, I)</li>
+      <li>Gözünüzü kapatmanız istendiğinde diğer gözünüzü kapatın.</li>
+      <li>Telefonunuzu sabit tutun, ekrana odaklanın.</li>
+    </ul>
+    <label class="checkbox">
+      <input type="checkbox" id="chkConsent" />
+      <span>Okudum, anladım.</span>
+    </label>
+  </div>
+  <button id="btnPatientStart" style="width:100%;" disabled>📷 Kamerayı Başlat ve QR Okut</button>
+  <button id="btnPatientBack" class="secondary">← Geri</button>
+</section>
+
+<!-- ============ HASTA: QR OKUTMA ============ -->
+<section id="screen-patient-scan" class="screen">
+  <h2>📷 QR Kodu Okutun</h2>
+  <p class="muted">Doktorunuzun ekranındaki QR kodu kameranıza tutun.</p>
+  <div id="reader"></div>
+  <button id="btnScanCancel" class="danger" style="margin-top:16px;">İptal</button>
+</section>
+
+<!-- ============ HASTA: TEST EKRANI ============ -->
+<section id="screen-patient-test" class="screen">
+  <div class="row" style="justify-content:space-between;align-items:center;">
+    <h2 id="patTestHeader">Sol Göz Testi</h2>
+    <span class="muted" id="patPhaseInfo"></span>
+  </div>
+  <div class="progress" id="patProgress"></div>
+
+  <!-- Faz: geri sayım -->
+  <div id="patCountdownPhase" class="flex-center">
+    <p class="muted" id="patCountdownLabel">Hazırlanıyor...</p>
+    <div class="countdown" id="patCountdown">60</div>
+    <p class="muted" style="text-align:center;" id="patCountdownHint">Oturun, gözlüğünüzü takın.</p>
+  </div>
+
+  <!-- Faz: harf bekle -->
+  <div id="patLetterPhase" class="flex-center hidden">
+    <p class="muted" style="margin-bottom:12px;">Doktorun ekranındaki harfi girin:</p>
+    <div class="countdown small" id="patAnswerTimer">5</div>
+    <input id="answerInput" type="text" maxlength="1" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="characters" />
+    <button id="btnSubmitAnswer" style="margin-top:16px;">Gönder ➤</button>
+  </div>
+</section>
+
+<!-- ============ SONUÇ EKRANI (ORTAK) ============ -->
+<section id="screen-result" class="screen">
+  <h2>📊 Test Sonucu</h2>
+  <div class="card">
+    <p class="result-label">Tahmini Görme Derecesi</p>
+    <div class="result-big" id="resultDegree">—</div>
+    <p class="result-label" style="margin-top:16px;">Olası Teşhis</p>
+    <div class="diagnosis" id="resultDiagnosis">—</div>
+    <div class="recap" id="resultRecap"></div>
+  </div>
+  <div class="card">
+    <p class="muted" style="font-size:.85rem;">
+      ⚕️ Bu bir simülasyondur ve tıbbi teşhis yerine geçmez. Gerçek bir göz muayenesi için doktorunuza başvurun.
+    </p>
+  </div>
+  <button id="btnResultHome" class="secondary" style="width:100%;">🏠 Ana Menüye Dön</button>
+</section>
+
+<!-- ============ TOAST ============ -->
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* ============================================================
+   SABİTLER & YARDIMCILAR
+   ============================================================ */
+const LETTERS = 'ABCDEFGHIJKLMNPRSTUVYZ'.split(''); // O, Q, W, X hariç (karışmasın)
+const SIZES = [
+  { px: 300, level: 1 }, { px: 220, level: 2 }, { px: 160, level: 3 },
+  { px: 120, level: 4 }, { px: 90,  level: 5 }, { px: 70,  level: 6 },
+  { px: 55,  level: 7 }, { px: 42,  level: 8 }
+];
+const LETTERS_PER_EYE = 8;
+const LETTER_TIME = 5;      // saniye
+const SETUP_TIME = 60;      // saniye
+const EYE_SWITCH_TIME = 30; // saniye
+
+// Benzer şekilli harf grupları (astigmat simülasyonu için)
+const SIMILAR_GROUPS = [
+  ['C','G'], ['M','N'], ['P','R'], ['E','F'], ['V','Y'], ['K','R'], ['H','N'], ['B','R']
+];
+function areSimilar(a, b) {
+  if (a === b) return false;
+  return SIMILAR_GROUPS.some(g => g.includes(a) && g.includes(b));
+}
+
+const $ = (id) => document.getElementById(id);
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+let toastTimer = null;
+function toast(msg, isError = false) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 3500);
+}
+function randLetter() {
+  return LETTERS[Math.floor(Math.random() * LETTERS.length)];
+}
+
+/* ============================================================
+   TEST DURUMU (paylaşılan)
+   ============================================================ */
+const state = {
+  role: null,          // 'doctor' | 'patient'
+  peer: null,
+  conn: null,
+  connected: false,
+  // Test verileri
+  test: {
+    eye: 'left',           // 'left' | 'right'
+    letterIndex: 0,        // 0..7
+    currentLetter: null,
+    currentSize: null,
+    results: { left: [], right: [] } // her harf: {letter, size, answered, correct, responseTime}
+  },
+  timers: {
+    countdown: null,
+    letterTimer: null,
+    answerTimer: null
+  }
+};
+
+/* ============================================================
+   PEERJS / WebRTC KURULUMU
+   ============================================================ */
+function initPeer(customId = null) {
+  return new Promise((resolve, reject) => {
+    const id = customId || 'goz-' + Math.random().toString(36).substring(2, 10);
+    const peer = new Peer(id, {
+      debug: 1,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    });
+    peer.on('open', (peerId) => {
+      console.log('[Peer] açıldı:', peerId);
+      resolve({ peer, peerId });
+    });
+    peer.on('error', (err) => {
+      console.error('[Peer] hata:', err);
+      reject(err);
+    });
+  });
+}
+
+/* ============================================================
+   QR KOD OLUŞTURMA (harici kütüphane olmadan basit QR)
+   ============================================================ */
+// QR kod için qrcode-generator yerine harici bir img servisi kullanmıyoruz
+// (sunucusuz olması için). Bunun yerine basit bir QR alternatifi:
+// PeerJS ID'sini düz metin olarak gösteriyoruz + QR için qrcodejs benzeri
+// hafif bir gömülü çözüm kullanıyoruz.
+//
+// Basitlik adına: QR kod yerine PeerJS ID'sini büyük punto + kopyalama
+// kullanıyoruz. Ancak isteğe bağlı olarak QR da üretebiliriz.
+// Aşağıda küçük bir QR üretici (qrcode-generator minified) yerine
+// Google Chart API'ye bağımlı olmayan bir çözüm:
+// --> Bu örnekte QR kütüphanesi CDN'den yüklenmiyor; bunun yerine
+//     PeerJS ID'sini QR yerine metin olarak gösteriyoruz.
+//     Ancak tam QR deneyimi için qrcode.min.js ekleyebilirsiniz.
+
+// NOT: Aşağıda basit bir "pseudo-QR" görsel oluşturuyoruz — gerçek QR
+// değil, sadece görsel bir placeholder. Gerçek QR için:
+// <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+// ve new QRCode(el, {text: peerId, width:256, height:256})
+// ekleyin.
+
+// Bunun yerine hastanın manuel giriş yapabileceği bir input da ekliyoruz.
+
+/* ============================================================
+   DOKTOR AKIŞI
+   ============================================================ */
+async function startDoctor() {
+  state.role = 'doctor';
+  showScreen('screen-doctor-lobby');
+  $('docStatusText').textContent = 'Sunucuya bağlanılıyor...';
+  $('docStatusDot').classList.remove('online');
+
+  try {
+    const { peer, peerId } = await initPeer();
+    state.peer = peer;
+    $('docStatusDot').classList.add('online');
+    $('docStatusText').textContent = 'Hasta bekleniyor...';
+    $('peerIdBox').textContent = peerId;
+
+    // QR kod alanına basit bir görsel yerleştir (gerçek QR değil, uyarı)
+    // Gerçek QR için aşağıdaki yorumu kaldırın ve qrcodejs kütüphanesini ekleyin.
+    $('qrContainer').innerHTML =
+      '<div style="color:#000;padding:24px;font-family:monospace;text-align:center;">' +
+      '<div style="font-size:11px;margin-bottom:6px;">Peer ID (manuel giriş için):</div>' +
+      '<div style="font-size:13px;font-weight:bold;word-break:break-all;max-width:220px;">' + peerId + '</div>' +
+      '</div>';
+
+    peer.on('connection', (conn) => {
+      if (state.conn && state.conn.open) {
+        toast('Zaten bir hasta bağlı.', true);
+        conn.close();
+        return;
+      }
+      state.conn = conn;
+      setupConnection(conn);
+      $('docStatusText').textContent = 'Hasta bağlandı ✓';
+      $('docStatusDot').classList.add('online');
+      $('btnStartTest').disabled = false;
+      toast('Hasta bağlandı! Testi başlatabilirsiniz.');
+    });
+
+    peer.on('error', (err) => {
+      console.error(err);
+      toast('Bağlantı hatası: ' + err.type, true);
+    });
+  } catch (e) {
+    $('docStatusText').textContent = 'Bağlantı başarısız: ' + e.type;
+    toast('PeerJS başlatılamadı. İnternet bağlantınızı kontrol edin.', true);
+  }
+}
+
+function setupConnection(conn) {
+  conn.on('open', () => {
+    state.connected = true;
+    console.log('[Conn] açıldı');
+    // Hasta bağlanınca 60sn geri sayımı hemen başlatma — "Testi Başlat" ile başlar
+    conn.send({ type: 'hello', role: 'doctor' });
+  });
+  conn.on('data', (data) => {
+    console.log('[Doctor recv]', data);
+    handleDoctorMessage(data);
+  });
+  conn.on('close', () => {
+    state.connected = false;
+    toast('Hasta bağlantısı kesildi.', true);
+    $('docStatusText').textContent = 'Hasta ayrıldı';
+    $('docStatusDot').classList.remove('online');
+    $('btnStartTest').disabled = true;
+  });
+  conn.on('error', (e) => console.error('[Conn] hata', e));
+}
+
+/* ============================================================
+   HASTA AKIŞI
+   ============================================================ */
+function startPatientConsent() {
+  state.role = 'patient';
+  showScreen('screen-patient-consent');
+  $('chkConsent').checked = false;
+  $('btnPatientStart').disabled = true;
+}
+
+async function startPatientScan() {
+  if (!$('chkConsent').checked) return;
+  showScreen('screen-patient-scan');
+  try {
+    const { peer, peerId } = await initPeer();
+    state.peer = peer;
+    $('btnScanCancel').disabled = false;
+
+    // QR tarayıcı
+    const html5Qr = new Html5Qrcode('reader');
+    html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (decodedText) => {
+        // QR'dan gelen metin: PeerJS ID'si olmalı
+        html5Qr.stop().catch(() => {});
+        connectToDoctor(decodedText);
+      },
+      () => {} // hata yok say
+    ).catch((err) => {
+      console.error(err);
+      toast('Kamera açılamadı: ' + err, true);
+    });
+
+    // İptal butonu
+    $('btnScanCancel').onclick = async () => {
+      try { await html5Qr.stop(); } catch(e) {}
+      showScreen('screen-patient-consent');
+    };
+  } catch (e) {
+    toast('Kamera başlatılamadı.', true);
+  }
+}
+
+function connectToDoctor(peerId) {
+  showScreen('screen-patient-scan');
+  $('reader').innerHTML = '<p class="muted" style="padding:20px;text-align:center;">Doktora bağlanılıyor...</p>';
+
+  const conn = state.peer.connect(peerId, { reliable: true });
+  state.conn = conn;
+
+  conn.on('open', () => {
+    state.connected = true;
+    toast('Doktora bağlandı ✓');
+    conn.send({ type: 'hello', role: 'patient' });
+  });
+
+  conn.on('data', (data) => {
+    console.log('[Patient recv]', data);
+    handlePatientMessage(data);
+  });
+
+  conn.on('close', () => {
+    state.connected = false;
+    toast('Doktor bağlantısı kesildi.', true);
+  });
+
+  conn.on('error', (e) => {
+    console.error(e);
+    toast('Bağlantı hatası.', true);
+  });
+}
+
+/* ============================================================
+   DOKTOR: TEST BAŞLAT
+   ============================================================ */
+function startDoctorTest() {
+  if (!state.conn || !state.conn.open) {
+    toast('Önce hasta bağlanmalı.', true);
+    return;
+  }
+  // Test durumunu sıfırla
+  state.test = {
+    eye: 'left',
+    letterIndex: 0,
+    currentLetter: null,
+    currentSize: null,
+    results: { left: [], right: [] }
+  };
+  showScreen('screen-doctor-test');
+  $('docTestHeader').textContent = 'Sol Göz Testi';
+  $('docPhaseInfo').textContent = 'Hazırlık';
+  renderDoctorProgress();
+
+  // Hastaya test başladı sinyali gönder
+  state.conn.send({ type: 'test-start' });
+
+  // 60 saniyelik geri sayım
+  startDoctorCountdown(SETUP_TIME, () => {
+    // Geri sayım bitti → ilk harfi gönder
+    sendNextLetter();
+  }, 'Hastanın hazırlanması için:', 'Telefonunuzu sabitleyin, hastanız otursun.');
+}
+
+function startDoctorCountdown(seconds, onDone, label, hint) {
+  clearInterval(state.timers.countdown);
+  $('docCountdownPhase').classList.remove('hidden');
+  $('docLetterPhase').classList.add('hidden');
+  $('docWaitingPhase').classList.add('hidden');
+  $('docCountdownLabel').textContent = label;
+  $('docCountdownHint').textContent = hint;
+  let remaining = seconds;
+  $('docCountdown').textContent = remaining;
+  state.timers.countdown = setInterval(() => {
+    remaining--;
+    $('docCountdown').textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(state.timers.countdown);
+      onDone();
+    }
+  }, 1000);
+}
+
+/* Doktor: sıradaki harfi üret ve gönder */
+function sendNextLetter() {
+  const t = state.test;
+  if (t.eye === 'left' && t.letterIndex >= LETTERS_PER_EYE) {
+    // Sol göz bitti → 30sn mola → sağ göz
+    beginEyeSwitch();
+    return;
+  }
+  if (t.eye === 'right' && t.letterIndex >= LETTERS_PER_EYE) {
+    finishTest();
+    return;
+  }
+
+  const size = SIZES[t.letterIndex];
+  const letter = randLetter();
+  t.currentLetter = letter;
+  t.currentSize = size;
+
+  // Ekranda göster
+  $('docCountdownPhase').classList.add('hidden');
+  $('docLetterPhase').classList.remove('hidden');
+  $('docWaitingPhase').classList.add('hidden');
+  const el = $('docLetter');
+  el.textContent = letter;
+  el.style.fontSize = size.px + 'px';
+  $('docPhaseInfo').textContent = `Harf ${t.letterIndex + 1}/${LETTERS_PER_EYE} • Seviye ${size.level}`;
+
+  // Hastaya gönder
+  state.conn.send({
+    type: 'letter',
+    eye: t.eye,
+    index: t.letterIndex,
+    letter: letter,       // hasta da görsün (senkron)
+    sizeLevel: size.level,
+    sizePx: size.px,
+    timeLimit: LETTER_TIME
+  });
+
+  // 5 sn cevap süresi
+  startDoctorAnswerTimer();
+}
+
+function startDoctorAnswerTimer() {
+  clearInterval(state.timers.answerTimer);
+  // Doktor tarafında da 5sn sayaç göster (hasta cevap verene kadar)
+  $('docLetterPhase').classList.remove('hidden');
+  $('docWaitingPhase').classList.add('hidden');
+
+  let remaining = LETTER_TIME;
+  // Harf gösteriminde kal, ama 5sn sonra hasta cevap vermezse otomatik yanlış say
+  state.timers.answerTimer = setTimeout(() => {
+    // Hasta cevap vermediyse
+    if (state.test.currentLetter && !state.test._answered) {
+      handleDoctorAnswer(null, true); // timeout
+    }
+  }, LETTER_TIME * 1000 + 500); // küçük tolerans
+}
+
+function handleDoctorMessage(data) {
+  if (data.type === 'answer') {
+    handleDoctorAnswer(data.answer, data.timeout);
+  } else if (data.type === 'ready') {
+    // Hasta hazır
+  }
+}
+
+function handleDoctorAnswer(answer, isTimeout) {
+  clearTimeout(state.timers.answerTimer);
+  const t = state.test;
+  if (!t.currentLetter) return;
+  t._answered = true;
+
+  const correct = !isTimeout && answer && answer.toUpperCase() === t.currentLetter;
+  const result = {
+    letter: t.currentLetter,
+    size: t.currentSize,
+    answered: isTimeout ? null : answer,
+    correct: correct,
+    timeout: !!isTimeout
+  };
+  t.results[t.eye].push(result);
+
+  // Progress güncelle
+  renderDoctorProgress();
+  renderPatientProgress(result, t.letterIndex);
+
+  // Kısa bir geri bildirim (doktor ekranında)
+  $('docLetterPhase').classList.add('hidden');
+  $('docWaitingPhase').classList.remove('hidden');
+  $('docWaitingPhase').querySelector('p').textContent = isTimeout
+    ? `⏱️ Süre dol
